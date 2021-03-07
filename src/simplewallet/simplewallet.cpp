@@ -174,6 +174,7 @@ namespace
   const command_line::arg_descriptor<bool> arg_allow_mismatched_daemon_version = {"allow-mismatched-daemon-version", sw::tr("Allow communicating with a daemon that uses a different RPC version"), false};
   const command_line::arg_descriptor<uint64_t> arg_restore_height = {"restore-height", sw::tr("Restore from specific blockchain height"), 0};
   const command_line::arg_descriptor<std::string> arg_restore_date = {"restore-date", sw::tr("Restore from estimated blockchain height on specified date"), ""};
+  const command_line::arg_descriptor<std::string> arg_restore_txid = {"restore-txid", sw::tr("Restore from specific consolidation transaction id blockchain height on specified date"), ""};
   const command_line::arg_descriptor<bool> arg_do_not_relay = {"do-not-relay", sw::tr("The newly created transaction will not be relayed to the monero network"), false};
   const command_line::arg_descriptor<bool> arg_create_address_file = {"create-address-file", sw::tr("Create an address file for new wallets"), false};
   const command_line::arg_descriptor<std::string> arg_subaddress_lookahead = {"subaddress-lookahead", tools::wallet2::tr("Set subaddress lookahead sizes to <major>:<minor>"), ""};
@@ -4599,9 +4600,11 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
 
     if (m_restoring && m_generate_from_json.empty() && m_generate_from_device.empty())
     {
+      // Some flag is used!
       m_wallet->explicit_refresh_from_block_height(!(command_line::is_arg_defaulted(vm, arg_restore_height) &&
-        command_line::is_arg_defaulted(vm, arg_restore_date)));
-      if (command_line::is_arg_defaulted(vm, arg_restore_height) && !command_line::is_arg_defaulted(vm, arg_restore_date))
+        command_line::is_arg_defaulted(vm, arg_restore_date) && command_line::is_arg_defaulted(vm, arg_restore_txid)));
+      // Sets m_restore_height if restore-date flag used
+      if (command_line::is_arg_defaulted(vm, arg_restore_height) && !command_line::is_arg_defaulted(vm, arg_restore_date) && command_line::is_arg_defaulted(vm, arg_restore_txid))
       {
         uint16_t year;
         uint8_t month;
@@ -4617,6 +4620,23 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         {
           fail_msg_writer() << e.what();
           return false;
+        }
+      }
+      // Sets m_restore_height if restore-txid flag used
+      else if (command_line::is_arg_defaulted(vm, arg_restore_height) && command_line::is_arg_defaulted(vm, arg_restore_date) && !command_line::is_arg_defaulted(vm, arg_restore_txid))
+      {
+        cryptonote::blobdata txid_data; // blobdata type is the same as string
+        if(!epee::string_tools::parse_hexstr_to_binbuff(m_restore_txid, txid_data) || txid_data.size() != sizeof(crypto::hash))
+        {
+          fail_msg_writer() << tr("failed to parse txid");
+          return false;
+        }
+        else
+        {
+          // Convert std::string into crypto::hash type
+          crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
+          m_restore_height = m_wallet->get_blockchain_height_by_txid(txid);
+          success_msg_writer() << tr("Restore height is: ") << m_restore_height;
         }
       }
     }
@@ -4688,7 +4708,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
           
           // Get the block height from tx id
           m_restore_height = m_wallet->get_blockchain_height_by_txid(txid);
-          success_msg_writer() << "Restore height is: " << m_restore_height;
+          success_msg_writer() << tr("Restore height is: ") << m_restore_height;
           break;
         }
       }
@@ -4796,6 +4816,7 @@ bool simple_wallet::handle_command_line(const boost::program_options::variables_
   m_allow_mismatched_daemon_version = command_line::get_arg(vm, arg_allow_mismatched_daemon_version);
   m_restore_height                = command_line::get_arg(vm, arg_restore_height);
   m_restore_date                  = command_line::get_arg(vm, arg_restore_date);
+  m_restore_txid                  = command_line::get_arg(vm, arg_restore_txid);
   m_do_not_relay                  = command_line::get_arg(vm, arg_do_not_relay);
   m_subaddress_lookahead          = command_line::get_arg(vm, arg_subaddress_lookahead);
   m_use_english_language_names    = command_line::get_arg(vm, arg_use_english_language_names);
@@ -10604,6 +10625,7 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_params, arg_allow_mismatched_daemon_version);
   command_line::add_arg(desc_params, arg_restore_height);
   command_line::add_arg(desc_params, arg_restore_date);
+  command_line::add_arg(desc_params, arg_restore_txid);
   command_line::add_arg(desc_params, arg_do_not_relay);
   command_line::add_arg(desc_params, arg_create_address_file);
   command_line::add_arg(desc_params, arg_subaddress_lookahead);

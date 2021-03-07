@@ -13784,10 +13784,10 @@ uint64_t wallet2::get_blockchain_height_by_txid(crypto::hash txid)
                             error::wallet_internal_error, "Failed to get transaction from daemon");
   // TODO: verify if the transaction is a consolidation tx.
   
-  std::cout << "Transaction found: " 
+  std::cout << tr("Transaction found: ")
             << tr("Height ") << res.txs[0].block_height << ", " 
             << tr("txid <") << res.txs[0].tx_hash << ">" << std::endl;
-  std::cout << "\nWARNING: If this is not a consolidation transaction, you may be missing some transactions and therefore your balance will be incorrect.\n" << std::endl;
+  std::cout << tr("\nWARNING: If this is not a consolidation transaction, you may be missing some transactions and therefore your balance will be incorrect.\n") << std::endl;
   
   return res.txs[0].block_height;
 }
