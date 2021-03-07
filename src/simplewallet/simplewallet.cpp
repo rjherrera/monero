@@ -4630,7 +4630,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         if (!connected || version < MAKE_CORE_RPC_VERSION(1, 6))
           heightstr = input_line("Restore from specific blockchain height (optional, default 0)");
         else
-          heightstr = input_line("Restore from specific blockchain height (optional, default 0),\nor alternatively from specific date (YYYY-MM-DD)");
+          heightstr = input_line("Restore from specific blockchain height (optional, default 0),\nfrom specific date (YYYY-MM-DD), or from consolidation transaction id (txid)");
         if (std::cin.eof())
           return false;
         if (heightstr.empty())
@@ -4638,41 +4638,58 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
           m_restore_height = 0;
           break;
         }
-        try
+        // Check if heightstr is not a tx id (hash)
+        cryptonote::blobdata txid_data; // blobdata type is the same as string
+        if(!epee::string_tools::parse_hexstr_to_binbuff(heightstr, txid_data) || txid_data.size() != sizeof(crypto::hash))
         {
-          m_restore_height = boost::lexical_cast<uint64_t>(heightstr);
-          break;
-        }
-        catch (const boost::bad_lexical_cast &)
-        {
-          if (!connected || version < MAKE_CORE_RPC_VERSION(1, 6))
-          {
-            fail_msg_writer() << tr("bad m_restore_height parameter: ") << heightstr;
-            continue;
-          }
-          uint16_t year;
-          uint8_t month;  // 1, 2, ..., 12
-          uint8_t day;    // 1, 2, ..., 31
+          // Check if heightstr is a height
           try
           {
-            if (!datestr_to_int(heightstr, year, month, day))
-              return false;
-            m_restore_height = m_wallet->get_blockchain_height_by_date(year, month, day);
-            success_msg_writer() << tr("Restore height is: ") << m_restore_height;
-            std::string confirm = input_line(tr("Is this okay?"), true);
-            if (std::cin.eof())
-              return false;
-            if(command_line::is_yes(confirm))
-              break;
+            m_restore_height = boost::lexical_cast<uint64_t>(heightstr);
+            break;
           }
           catch (const boost::bad_lexical_cast &)
           {
-            fail_msg_writer() << tr("bad m_restore_height parameter: ") << heightstr;
+            if (!connected || version < MAKE_CORE_RPC_VERSION(1, 6))
+            {
+              fail_msg_writer() << tr("bad m_restore_height parameter: ") << heightstr;
+              continue;
+            }
+            // Ckeck if heightstr is a date
+            uint16_t year;
+            uint8_t month;  // 1, 2, ..., 12
+            uint8_t day;    // 1, 2, ..., 31
+            try
+            {
+              if (!datestr_to_int(heightstr, year, month, day))
+                return false;
+              m_restore_height = m_wallet->get_blockchain_height_by_date(year, month, day);
+              success_msg_writer() << tr("Restore height is: ") << m_restore_height;
+              std::string confirm = input_line(tr("Is this okay?"), true);
+              if (std::cin.eof())
+                return false;
+              if(command_line::is_yes(confirm))
+                break;
+            }
+            catch (const boost::bad_lexical_cast &)
+            {
+              fail_msg_writer() << tr("bad m_restore_height parameter: ") << heightstr;
+            }
+            catch (const std::runtime_error& e)
+            {
+              fail_msg_writer() << e.what();
+            }
           }
-          catch (const std::runtime_error& e)
-          {
-            fail_msg_writer() << e.what();
-          }
+        }
+        else
+        {
+          // Convert cryptonote::blobdata into crypto::hash type
+          crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
+          
+          // Get the block height from tx id
+          m_restore_height = m_wallet->get_blockchain_height_by_txid(txid);
+          success_msg_writer() << "Restore height is: " << m_restore_height;
+          break;
         }
       }
     }
@@ -5418,7 +5435,7 @@ void simple_wallet::check_background_mining(const epee::wipeable_string &passwor
     message_writer() << tr("The daemon is not set up to background mine.");
     message_writer() << tr("With background mining enabled, the daemon will mine when idle and not on battery.");
     message_writer() << tr("Enabling this supports the network you are using, and makes you eligible for receiving new monero");
-    std::string accepted = input_line(tr("Do you want to do it now? (Y/Yes/N/No): "));
+    std::string accepted = input_line(tr("Do you want to do it now? (Y/Yes/N/No)"));
     if (std::cin.eof() || !command_line::is_yes(accepted)) {
       m_wallet->setup_background_mining(tools::wallet2::BackgroundMiningNo);
       m_wallet->rewrite(m_wallet_file, password);
@@ -5850,7 +5867,7 @@ void simple_wallet::on_refresh_finished(uint64_t start_height, uint64_t fetched_
   // Finished first refresh for HW device and money received -> KI sync
   message_writer() << "\n" << tr("The first refresh has finished for the HW-based wallet with received money. hw_key_images_sync is needed. ");
 
-  std::string accepted = input_line(tr("Do you want to do it now? (Y/Yes/N/No): "));
+  std::string accepted = input_line(tr("Do you want to do it now? (Y/Yes/N/No)"));
   if (std::cin.eof() || !command_line::is_yes(accepted)) {
     message_writer(console_color_red, false) << tr("hw_key_images_sync skipped. Run command manually before a transfer.");
     return;
@@ -9150,7 +9167,7 @@ bool simple_wallet::rescan_blockchain(const std::vector<std::string> &args_)
   if (start_height > wallet_from_height)
   {
     message_writer() << tr("Warning: your restore height is higher than wallet restore height: ") << wallet_from_height;
-    std::string confirm = input_line(tr("Rescan anyway ? (Y/Yes/N/No): "));
+    std::string confirm = input_line(tr("Rescan anyway ? (Y/Yes/N/No)"));
     if(!std::cin.eof())
     {
       if (!command_line::is_yes(confirm))
