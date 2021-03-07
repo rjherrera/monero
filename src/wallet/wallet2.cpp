@@ -13769,6 +13769,23 @@ bool wallet2::parse_uri(const std::string &uri, std::string &address, std::strin
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+uint64_t wallet2::get_blockchain_height_by_txid(crypto::hash txid)
+{
+  // RPC call's parameters
+  cryptonote::COMMAND_RPC_GET_TRANSACTIONS::request req;
+  cryptonote::COMMAND_RPC_GET_TRANSACTIONS::response res;
+  req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txid));
+  req.decode_as_json = false;
+  req.prune = true;  
+  // RPC call
+  bool ok = epee::net_utils::invoke_http_json("/gettransactions", req, res, *m_http_client, rpc_timeout);
+  THROW_ON_RPC_RESPONSE_ERROR_GENERIC(ok, {}, res, "/gettransactions");
+  THROW_WALLET_EXCEPTION_IF(!ok || (res.txs.size() != 1 && res.txs_as_hex.size() != 1),
+                            error::wallet_internal_error, "Failed to get transaction from daemon");
+
+  return res.txs[0].block_height;
+}
+//----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, uint8_t day)
 {
   uint32_t version;
